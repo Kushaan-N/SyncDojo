@@ -13,7 +13,7 @@ SIF=${RD_SIF:?set RD_SIF}; OUT=${OUT:-$PWD/opus_runs}; mkdir -p "$OUT"
 : "${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}"
 # The NGX bind works around a missing DLSS library on some drivers; drop it if not needed.
 run() { apptainer exec --nv -B /usr/lib64/libnvidia-ngx.so.1:/.singularity.d/libs/libnvidia-ngx.so.1 --writable-tmpfs \
-  --home $D/home -B "$SD" -B "$OUT" ${RD_BINDS:-} \
+  --home $D/home -B "$D" -B "$SD" -B "$OUT" ${RD_BINDS:-} \
   "$SIF" bash -c "cd $RD && export PYTHONPATH=$RD:$RD/XPolicyLab:$SD && $*"; }
 if [ -n "$GRASP" ]; then
   echo "=== grasp test"; run timeout 1200 $D/venv/bin/python $SD/scripts/rd_grasp_test.py --task $TASK --layout 0 --out $OUT/grasp_out_$TASK
