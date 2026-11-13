@@ -32,6 +32,9 @@ for m in sorted(glob.glob(os.path.join(a.runs, a.task, "**", "metadata.json"), r
     if kind == "sweep" and "final_state_ok" not in d:
         skipped["sweep labelled before the final-state check existed"] += 1
         continue
+    if kind == "sweep" and not any("collision: True" in l for l in d.get("exec_log", [])):
+        skipped["sweep that touched nothing"] += 1
+        continue
     A = np.load(os.path.join(ep, "actions.npy"))
     xyz = A[:, [0, 1, 2, 8, 9, 10]]
     if np.abs(np.diff(xyz, axis=0)).sum() < MIN_PATH_M:
