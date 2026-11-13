@@ -46,6 +46,7 @@ from syncdojo.opus_planner import MotionScript
 from syncdojo.recorder import Recorder
 
 rng = random.Random(a.seed)
+SCENE_PROPS = {"camera_stand"}  # fixed scene furniture, not part of the task
 nrng = np.random.default_rng(a.seed)
 root = os.path.join(a.out, a.task)
 bases = []
@@ -129,8 +130,9 @@ def edit_script(script, kind):
 
 
 def sweep_steps(sim):
-    """Free arm sweeps across the object cluster at mid height."""
-    objs = sim.objects()
+    """Free arm sweeps across the object cluster at the top object's height. Scene props (the camera
+    stand) are left out, so the sweep aims at the task objects rather than between them and the stand."""
+    objs = {k: v for k, v in sim.objects().items() if k not in SCENE_PROPS}
     xyz = np.array([v[:3] for v in objs.values()])
     c = xyz.mean(0)
     side = rng.choice(["left", "right"])
@@ -219,11 +221,16 @@ for i, kind, (bdir, meta) in order:
 
                 def fn(ms=ms):
                     log = run_script(sim, ms, settle_steps=20)[0]
+                    before = {k: np.asarray(v[:3], float) for k, v in sim.objects().items()}
                     side, pts, yaw = sweep_steps(sim)
                     for k, pt in enumerate(pts):
                         ok, msg = sim.move_tcp(side, pt, yaw, 0.0, straight=(k == 2))
                         log.append(f"sweep {side} {k}: {ok} {msg}")
                     sim.move_home(side); sim.hold(60)
+                    moved = {k: round(float(np.linalg.norm(np.asarray(v[:3], float) - before[k])) * 100, 1)
+                             for k, v in sim.objects().items() if k in before and k not in SCENE_PROPS}
+                    hit = max(moved.values(), default=0.0) >= 1.0
+                    log.append(f"sweep displaced (cm): {json.dumps(moved)}; collision: {hit}")
                     return log
                 rollout(name, kind, L, fn, {"base": bdir})
             else:
