@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 import numpy as np
 
 MIN_PATH_M = 0.10   # total TCP travel below this: nothing happens in the episode
-DUP_TOL_M = 0.001   # TCP paths closer than this at every frame: the same episode twice
+DUP_TOL_M = 0.001   # arm and object paths closer than this at every frame: the same episode twice
 
 p = argparse.ArgumentParser()
 p.add_argument("--runs", required=True)
@@ -37,20 +37,23 @@ for m in sorted(glob.glob(os.path.join(a.runs, a.task, "**", "metadata.json"), r
     if np.abs(np.diff(xyz, axis=0)).sum() < MIN_PATH_M:
         skipped["arms never move (script stopped at its first step)"] += 1
         continue
-    pool.append({"dir": ep, "success": bool(d.get("success")), "kind": kind, "layout": d.get("layout"), "_xyz": xyz})
+    obj = np.load(os.path.join(ep, "object_poses.npz"))["poses"][..., :3]
+    pool.append({"dir": ep, "success": bool(d.get("success")), "kind": kind, "layout": d.get("layout"),
+                 "_xyz": xyz, "_obj": obj})
 
 # Reruns of a script can come out identical to the original (the sim is often deterministic). Keep one
-# of each group of identical arm trajectories; originals (Opus attempts) are kept in preference.
+# of each group with identical arm AND object trajectories; originals (Opus attempts) are kept in preference.
 pool.sort(key=lambda r: (r["kind"] not in ("opus_success", "opus_failure"), r["dir"]))
 kept = []
 for r in pool:
-    dup = any(k["layout"] == r["layout"] and k["_xyz"].shape == r["_xyz"].shape
-              and np.abs(k["_xyz"] - r["_xyz"]).max() < DUP_TOL_M for k in kept)
+    dup = any(k["layout"] == r["layout"] and k["_xyz"].shape == r["_xyz"].shape and k["_obj"].shape == r["_obj"].shape
+              and np.abs(k["_xyz"] - r["_xyz"]).max() < DUP_TOL_M and np.abs(k["_obj"] - r["_obj"]).max() < DUP_TOL_M
+              for k in kept)
     if dup:
         skipped["identical to another rollout"] += 1
     else:
         kept.append(r)
-pool = [{k: v for k, v in r.items() if k != "_xyz"} for r in kept]
+pool = [{k: v for k, v in r.items() if not k.startswith("_")} for r in kept]
 
 by = {True: defaultdict(list), False: defaultdict(list)}
 for r in pool:
