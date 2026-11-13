@@ -132,22 +132,27 @@ def edit_script(script, kind):
     return MotionScript.model_validate(s), info
 
 
-def sweep_steps(sim):
-    """Free arm sweeps across the object cluster at the top object's height. Scene props (the camera
-    stand) are left out, so the sweep aims at the task objects rather than between them and the stand."""
+def sweep_steps(sim, side):
+    """Waypoints for `side`'s arm to sweep across the task objects at the top object's height. Scene
+    props (the camera stand) are left out, so the sweep aims at the objects themselves."""
     objs = {k: v for k, v in sim.objects().items() if k not in SCENE_PROPS}
     xyz = np.array([v[:3] for v in objs.values()])
     c = xyz.mean(0)
-    side = rng.choice(["left", "right"])
     base = np.asarray(sim.arms[side].entity_origin_pose, dtype=float)[:3]
     d = c[:2] - base[:2]; d /= np.linalg.norm(d) + 1e-9
     perp = np.array([-d[1], d[0]])
-    z = float(xyz[:, 2].max()) + rng.uniform(-0.01, 0.02)
+    z = max(float(xyz[:, 2].max()) + rng.uniform(-0.01, 0.01), sim.surface_z + 0.015)
     a0 = np.r_[c[:2] + 0.12 * perp, z + 0.10]
     a1 = np.r_[c[:2] + 0.12 * perp, z]
     a2 = np.r_[c[:2] - 0.12 * perp, z]
     yaw = float(np.degrees(np.arctan2(perp[1], perp[0])))
-    return side, [a0, a1, a2], yaw
+    return [a0, a1, a2], yaw
+
+
+def sweep_sides(sim):
+    """Arms ordered by distance to the objects: the nearer one can usually reach the sweep."""
+    c = np.array([v[:3] for k, v in sim.objects().items() if k not in SCENE_PROPS]).mean(0)
+    return sorted(sim.arms, key=lambda s: np.linalg.norm(np.asarray(sim.arms[s].entity_origin_pose, dtype=float)[:2] - c[:2]))
 
 
 # ----------------------------------------------------------------------------- rollouts
@@ -228,11 +233,21 @@ for i, kind, (bdir, meta) in order:
                 def fn(ms=ms):
                     log = run_script(sim, ms, settle_steps=20)[0]
                     before = {k: np.asarray(v[:3], float) for k, v in sim.objects().items()}
-                    side, pts, yaw = sweep_steps(sim)
-                    for k, pt in enumerate(pts):
-                        ok, msg = sim.move_tcp(side, pt, yaw, 0.0, straight=(k == 2))
-                        log.append(f"sweep {side} {k}: {ok} {msg}")
-                    sim.move_home(side); sim.hold(60)
+                    for side in sweep_sides(sim):  # nearer arm first; the other one if it cannot get there
+                        pts, yaw = sweep_steps(sim, side)
+                        ok, msg = sim.move_tcp(side, pts[0], yaw, 0.0, False)
+                        log.append(f"sweep {side} 0: {ok} {msg}")
+                        if not ok:
+                            continue
+                        sim.grip(side, 0.0)  # closed fingers: an open gripper can straddle a block and miss it
+                        for k in (1, 2):
+                            ok, msg = sim.move_tcp(side, pts[k], yaw, 0.0, straight=(k == 2))
+                            log.append(f"sweep {side} {k}: {ok} {msg}")
+                        sim.move_tcp(side, pts[2] + np.array([0, 0, 0.10]), yaw, 0.0, True)
+                        sim.grip(side, 1.0)
+                        sim.move_home(side)
+                        break
+                    sim.hold(60)
                     moved = {k: round(float(np.linalg.norm(np.asarray(v[:3], float) - before[k])) * 100, 1)
                              for k, v in sim.objects().items() if k in before and k not in SCENE_PROPS}
                     hit = max(moved.values(), default=0.0) >= 1.0
