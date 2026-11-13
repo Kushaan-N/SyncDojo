@@ -119,7 +119,10 @@ def edit_script(script, kind):
         info.update(step=r, dz=dz)
     elif kind == "early_open" and closes:
         c = rng.choice(closes)
-        later = [i for i in range(c + 1, len(st)) if st[i]["op"] == "move" and st[i]["arm"] == st[c]["arm"]]
+        # only moves made while this arm is still holding (before its next open), and not the last of
+        # those: opening there would just be the planned release
+        nxt = next((i for i in range(c + 1, len(st)) if st[i]["op"] == "open" and st[i]["arm"] == st[c]["arm"]), len(st))
+        later = [i for i in range(c + 1, nxt) if st[i]["op"] == "move" and st[i]["arm"] == st[c]["arm"]]
         if later:
             i = rng.choice(later[: max(1, len(later) - 1)])
             st.insert(i + 1, {"arm": st[c]["arm"], "op": "open", "note": "premature release (expansion)"})
@@ -162,11 +165,14 @@ def rollout(name, kind, layout, fn, info):
     sim.recorder = Recorder()
     try:
         log = fn()
-        success = sim.success()
+        latched = sim.success()
+        final_ok = sim.final_state_ok()
+        success = latched and final_ok  # the label describes how the episode ENDS
     except Exception as e:
-        traceback.print_exc(); log, success = [f"simulator error: {e!r}"[:300]], False
+        traceback.print_exc(); log, success, latched, final_ok = [f"simulator error: {e!r}"[:300]], False, False, False
     meta = {"task": a.task, "layout": layout, "instruction": sim.instruction, "source": "expansion",
-            "kind": kind, "success": success, "info": info, "exec_log": log,
+            "kind": kind, "success": success, "success_latched": latched, "final_state_ok": final_ok,
+            "info": info, "exec_log": log,
             "physics_steps": sim.n_step, "dt": rd_sim.DT, "wall_s": round(time.time() - t0, 1)}
     try:
         T = sim.recorder.save(ep, sim.stream, meta)
@@ -238,6 +244,7 @@ for i, kind, (bdir, meta) in order:
                 if ms is None:
                     continue
                 info["base"] = bdir
+                info["script"] = ms.model_dump()
                 rollout(name, kind, L, lambda ms=ms: run_script(sim, ms)[0], info)
 print("EXPAND_DONE", flush=True)
 sys.stdout.flush(); os._exit(0)  # SimulationApp.close() can hang for minutes after the work is saved
