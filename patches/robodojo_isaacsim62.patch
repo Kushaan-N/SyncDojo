@@ -1,0 +1,321 @@
+diff -ruN a/env/compat_is6.py b/env/compat_is6.py
+--- a/env/compat_is6.py	1969-12-31 19:00:00.000000000 -0500
++++ b/env/compat_is6.py	2026-11-12 18:35:37.409628062 -0500
+@@ -0,0 +1,17 @@
++"""Helpers that Isaac Sim 6.x removed, restored for RoboDojo (copied from Isaac Sim 5.1)."""
++import omni.kit.commands
++import omni.usd
++from pxr import Sdf, UsdShade
++
++
++def create_mdl_material(mtl_url: str, mtl_name: str, mtl_path: str) -> UsdShade.Material:
++    """Creates an MDL material at the given path with the specified URL and name."""
++    omni.kit.commands.execute("CreateMdlMaterialPrim", mtl_url=mtl_url, mtl_name=mtl_name, mtl_path=mtl_path)
++    stage = omni.usd.get_context().get_stage()
++    mtl_prim = stage.GetPrimAtPath(mtl_path)
++    shader = UsdShade.Shader(omni.usd.get_shader_from_material(mtl_prim, get_prim=True))
++    shader.CreateInput("diffuse_texture", Sdf.ValueTypeNames.Asset)
++    shader.CreateInput("project_uvw", Sdf.ValueTypeNames.Bool)
++    shader.CreateInput("texture_scale", Sdf.ValueTypeNames.Float2)
++    shader.CreateInput("texture_rotate", Sdf.ValueTypeNames.Float)
++    return UsdShade.Material(mtl_prim)
+diff -ruN a/env/environment/base_env.py b/env/environment/base_env.py
+--- a/env/environment/base_env.py	2026-11-11 22:38:32.701262715 -0500
++++ b/env/environment/base_env.py	2026-11-12 18:32:32.695728447 -0500
+@@ -7,7 +7,7 @@
+ from isaaclab_tasks.utils import parse_env_cfg  # this need dynamic import
+ from isaacsim.core.utils.stage import get_current_stage
+ from omegaconf import DictConfig, OmegaConf
+-from omni.physx import acquire_physx_interface
++from omni.physx import get_physx_interface as acquire_physx_interface
+ 
+ from env.environment.isaac.isaac_rl_env import IsaacRLEnv
+ from env.seeding import seed_everywhere
+diff -ruN a/env/scene_manager/objects/fluid.py b/env/scene_manager/objects/fluid.py
+--- a/env/scene_manager/objects/fluid.py	2026-11-11 22:38:32.797780152 -0500
++++ b/env/scene_manager/objects/fluid.py	2026-11-12 18:35:37.439428351 -0500
+@@ -4,7 +4,7 @@
+ from isaacsim.core.utils.prims import delete_prim, is_prim_path_valid
+ from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
+ from isaacsim.core.utils.string import find_unique_string_name
+-from isaacsim.replicator.behavior.utils.scene_utils import create_mdl_material
++from env.compat_is6 import create_mdl_material
+ import numpy as np
+ from omegaconf import DictConfig, ListConfig
+ import omni.kit.commands
+diff -ruN a/env/scene_manager/objects/ground.py b/env/scene_manager/objects/ground.py
+--- a/env/scene_manager/objects/ground.py	2026-11-11 22:38:32.809019701 -0500
++++ b/env/scene_manager/objects/ground.py	2026-11-12 18:35:37.424931014 -0500
+@@ -14,7 +14,7 @@
+ )
+ from isaacsim.core.utils.stage import get_current_stage
+ from isaacsim.core.utils.string import find_unique_string_name
+-from isaacsim.replicator.behavior.utils.scene_utils import create_mdl_material
++from env.compat_is6 import create_mdl_material
+ import numpy as np
+ from omegaconf import DictConfig
+ import omni.kit.commands
+diff -ruN a/env/scene_manager/objects/table.py b/env/scene_manager/objects/table.py
+--- a/env/scene_manager/objects/table.py	2026-11-11 22:38:32.829100609 -0500
++++ b/env/scene_manager/objects/table.py	2026-11-12 18:35:37.451896510 -0500
+@@ -14,7 +14,7 @@
+ )
+ import isaacsim.core.utils.stage as stage_utils
+ from isaacsim.core.utils.string import find_unique_string_name
+-from isaacsim.replicator.behavior.utils.scene_utils import create_mdl_material
++from env.compat_is6 import create_mdl_material
+ import numpy as np
+ import omni.kit.commands
+ from omni.physx.scripts import physicsUtils
+diff -ruN a/third_party/IsaacLab/apps/isaaclab.python.kit b/third_party/IsaacLab/apps/isaaclab.python.kit
+--- a/third_party/IsaacLab/apps/isaaclab.python.kit	2026-11-11 22:44:08.316650090 -0500
++++ b/third_party/IsaacLab/apps/isaaclab.python.kit	2026-11-12 18:24:43.962975634 -0500
+@@ -38,7 +38,7 @@
+ 
+ # Isaac Sim Extra
+ "isaacsim.asset.importer.mjcf" = {}
+-"isaacsim.asset.importer.urdf" = {version = "2.4.31", exact = true}
++"isaacsim.asset.importer.urdf" = {}
+ "omni.physx.bundle" = {}
+ "omni.physx.tensors" = {}
+ "omni.replicator.core" = {}
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py	2026-11-11 22:44:11.308924341 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py	2026-11-12 18:24:43.845260950 -0500
+@@ -16,7 +16,7 @@
+ import warp as wp
+ from prettytable import PrettyTable
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.simulation_manager import SimulationManager
+ from pxr import PhysxSchema, UsdPhysics
+ 
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation_data.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation_data.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation_data.py	2026-11-11 22:44:11.316781809 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation_data.py	2026-11-12 18:24:43.835958188 -0500
+@@ -8,7 +8,7 @@
+ 
+ import torch
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.simulation_manager import SimulationManager
+ 
+ import isaaclab.utils.math as math_utils
+@@ -738,7 +738,7 @@
+         `PhysX Tensor API`_.
+ 
+         .. _`PhysX documentation`: https://nvidia-omniverse.github.io/PhysX/physx/5.5.1/docs/Articulations.html#link-incoming-joint-force
+-        .. _`PhysX Tensor API`: https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/extensions/runtime/source/omni.physics.tensors/docs/api/python.html#omni.physics.tensors.impl.api.ArticulationView.get_link_incoming_joint_force
++        .. _`PhysX Tensor API`: https://docs.omniverse.nvidia.com/kit/docs/omni_physics/latest/extensions/runtime/source/omni.physics.tensors/docs/api/python.html#omni.physics.tensors.api.ArticulationView.get_link_incoming_joint_force
+         """
+ 
+         if self._body_incoming_joint_wrench_b.timestamp < self._sim_timestamp:
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object.py	2026-11-11 22:44:11.334443085 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object.py	2026-11-12 18:31:29.585642184 -0500
+@@ -11,7 +11,7 @@
+ 
+ import torch
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.simulation_manager import SimulationManager
+ from pxr import PhysxSchema, UsdShade
+ 
+@@ -89,7 +89,7 @@
+         return 1
+ 
+     @property
+-    def root_physx_view(self) -> physx.SoftBodyView:
++    def root_physx_view(self) -> physx.DeformableBodyView:
+         """Deformable body view for the asset (PhysX).
+ 
+         Note:
+@@ -98,7 +98,7 @@
+         return self._root_physx_view
+ 
+     @property
+-    def material_physx_view(self) -> physx.SoftBodyMaterialView | None:
++    def material_physx_view(self) -> physx.DeformableMaterialView | None:
+         """Deformable material view for the asset (PhysX).
+ 
+         This view is optional and may not be available if the material is not bound to the deformable body.
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object_data.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object_data.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object_data.py	2026-11-11 22:44:11.341116545 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/deformable_object/deformable_object_data.py	2026-11-12 18:31:29.602316237 -0500
+@@ -7,7 +7,7 @@
+ 
+ import torch
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ 
+ import isaaclab.utils.math as math_utils
+ from isaaclab.utils.buffers import TimestampedBuffer
+@@ -33,7 +33,7 @@
+     is older than the current simulation timestamp. The timestamp is updated whenever the data is updated.
+     """
+ 
+-    def __init__(self, root_physx_view: physx.SoftBodyView, device: str):
++    def __init__(self, root_physx_view: physx.DeformableBodyView, device: str):
+         """Initializes the deformable object data.
+ 
+         Args:
+@@ -45,7 +45,7 @@
+         # Set the root deformable body view
+         # note: this is stored as a weak reference to avoid circular references between the asset class
+         #  and the data container. This is important to avoid memory leaks.
+-        self._root_physx_view: physx.SoftBodyView = weakref.proxy(root_physx_view)
++        self._root_physx_view: physx.DeformableBodyView = weakref.proxy(root_physx_view)
+ 
+         # Set initial time stamp
+         self._sim_timestamp = 0.0
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object.py	2026-11-11 22:44:11.350443474 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object.py	2026-11-12 18:24:43.872462707 -0500
+@@ -12,7 +12,7 @@
+ import torch
+ import warp as wp
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.simulation_manager import SimulationManager
+ from pxr import UsdPhysics
+ 
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object_data.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object_data.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object_data.py	2026-11-11 22:44:11.355578396 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object/rigid_object_data.py	2026-11-12 18:24:43.880061140 -0500
+@@ -7,7 +7,7 @@
+ 
+ import torch
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ 
+ import isaaclab.utils.math as math_utils
+ from isaaclab.sim.utils.stage import get_current_stage_id
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection.py	2026-11-11 22:44:11.362901480 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection.py	2026-11-12 18:24:43.900745582 -0500
+@@ -13,7 +13,7 @@
+ import torch
+ import warp as wp
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.simulation_manager import SimulationManager
+ from pxr import UsdPhysics
+ 
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection_data.py b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection_data.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection_data.py	2026-11-11 22:44:11.368251928 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/assets/rigid_object_collection/rigid_object_collection_data.py	2026-11-12 18:24:43.891646366 -0500
+@@ -7,7 +7,7 @@
+ 
+ import torch
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ 
+ import isaaclab.utils.math as math_utils
+ from isaaclab.sim.utils.stage import get_current_stage_id
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/envs/mdp/events.py b/third_party/IsaacLab/source/isaaclab/isaaclab/envs/mdp/events.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/envs/mdp/events.py	2026-11-11 22:44:11.803168225 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/envs/mdp/events.py	2026-11-12 18:24:43.909986969 -0500
+@@ -22,7 +22,7 @@
+ import torch
+ 
+ import carb
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.utils.extensions import enable_extension
+ from pxr import Gf, Sdf, UsdGeom, Vt
+ 
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/contact_sensor/contact_sensor.py b/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/contact_sensor/contact_sensor.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/contact_sensor/contact_sensor.py	2026-11-11 22:44:11.969128203 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/contact_sensor/contact_sensor.py	2026-11-12 18:24:43.919224234 -0500
+@@ -14,7 +14,7 @@
+ import torch
+ 
+ import carb
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ from isaacsim.core.simulation_manager import SimulationManager
+ from pxr import PhysxSchema
+ 
+@@ -464,7 +464,7 @@
+                     contact_data[start_index_ij : (start_index_ij + count_ij), :], dim=0
+                 )
+ 
+-        For more details, see the `RigidContactView.get_contact_data() documentation <https://docs.omniverse.nvidia.com/kit/docs/omni_physics/107.3/extensions/runtime/source/omni.physics.tensors/docs/api/python.html#omni.physics.tensors.impl.api.RigidContactView.get_contact_data>`_.
++        For more details, see the `RigidContactView.get_contact_data() documentation <https://docs.omniverse.nvidia.com/kit/docs/omni_physics/107.3/extensions/runtime/source/omni.physics.tensors/docs/api/python.html#omni.physics.tensors.api.RigidContactView.get_contact_data>`_.
+ 
+         Args:
+             contact_data: Flat tensor of contact data, shape (N_envs * N_bodies, 3).
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/multi_mesh_ray_caster.py b/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/multi_mesh_ray_caster.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/multi_mesh_ray_caster.py	2026-11-11 22:44:12.024891509 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/multi_mesh_ray_caster.py	2026-11-12 18:24:43.934565768 -0500
+@@ -15,7 +15,7 @@
+ import trimesh
+ import warp as wp
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ 
+ import isaaclab.sim as sim_utils
+ from isaaclab.sim.views import XformPrimView
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/ray_cast_utils.py b/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/ray_cast_utils.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/ray_cast_utils.py	2026-11-11 22:44:12.053479032 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/sensors/ray_caster/ray_cast_utils.py	2026-11-12 18:24:43.926286667 -0500
+@@ -9,7 +9,7 @@
+ 
+ import torch
+ 
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx
+ 
+ from isaaclab.sim.views import XformPrimView
+ from isaaclab.utils.math import convert_quat
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/sim/converters/urdf_converter.py b/third_party/IsaacLab/source/isaaclab/isaaclab/sim/converters/urdf_converter.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/sim/converters/urdf_converter.py	2026-11-11 22:44:12.118869510 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/sim/converters/urdf_converter.py	2026-11-12 18:24:43.993187835 -0500
+@@ -64,8 +64,8 @@
+         # switch to older version of the URDF importer extension
+         if get_isaac_sim_version() >= Version("5.1"):
+             manager = omni.kit.app.get_app().get_extension_manager()
+-            if not manager.is_extension_enabled("isaacsim.asset.importer.urdf-2.4.31"):
+-                manager.set_extension_enabled_immediate("isaacsim.asset.importer.urdf-2.4.31", True)
++            if not manager.is_extension_enabled("isaacsim.asset.importer.urdf"):
++                manager.set_extension_enabled_immediate("isaacsim.asset.importer.urdf", True)
+ 
+         # acquire the URDF interface
+         from isaacsim.asset.importer.urdf._urdf import acquire_urdf_interface
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py b/third_party/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py	2026-11-11 22:44:12.140129888 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/sim/simulation_context.py	2026-11-12 18:32:32.708498982 -0500
+@@ -637,7 +637,7 @@
+     async def reset_async(self, soft: bool = False):
+         # need to load all "physics" information from the USD file
+         if not soft:
+-            omni.physx.acquire_physx_interface().force_load_physics_from_usd()
++            omni.physx.get_physx_interface().force_load_physics_from_usd()
+         # play the simulation
+         await super().reset_async(soft=soft)
+ 
+diff -ruN a/third_party/IsaacLab/source/isaaclab/isaaclab/sim/utils/prims.py b/third_party/IsaacLab/source/isaaclab/isaaclab/sim/utils/prims.py
+--- a/third_party/IsaacLab/source/isaaclab/isaaclab/sim/utils/prims.py	2026-11-11 22:44:12.273238680 -0500
++++ b/third_party/IsaacLab/source/isaaclab/isaaclab/sim/utils/prims.py	2026-11-12 19:00:15.622783045 -0500
+@@ -868,8 +868,10 @@
+     # check if prim has collision applied on it
+     has_physics_scene_api = prim.HasAPI(PhysxSchema.PhysxSceneAPI)
+     has_collider = prim.HasAPI(UsdPhysics.CollisionAPI)
+-    has_deformable_body = prim.HasAPI(PhysxSchema.PhysxDeformableBodyAPI)
+-    has_particle_system = prim.IsA(PhysxSchema.PhysxParticleSystem)
++    _dbapi = getattr(PhysxSchema, "PhysxDeformableBodyAPI", None)  # removed in Isaac Sim 6
++    has_deformable_body = _dbapi is not None and prim.HasAPI(_dbapi)
++    _ps = getattr(PhysxSchema, "PhysxParticleSystem", None)
++    has_particle_system = _ps is not None and prim.IsA(_ps)
+     if not (has_physics_scene_api or has_collider or has_deformable_body or has_particle_system):
+         logger.debug(
+             f"Cannot apply physics material '{material_path}' on prim '{prim_path}'. It is neither a"
