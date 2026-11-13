@@ -5,8 +5,7 @@ close a gripper, wait). The simulator runs it through the motion planner; if the
 `revise` sends Opus what happened (which step failed and why, final object poses, the
 success check) and asks for a corrected script. No demonstrations are ever shown.
 
-The API key comes from the environment (ANTHROPIC_API_KEY, loaded from
-~/.config/anthropic/api_key.env); it is never logged.
+The API key comes from the environment (ANTHROPIC_API_KEY); it is never logged.
 """
 from __future__ import annotations
 
