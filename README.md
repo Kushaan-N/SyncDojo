@@ -14,9 +14,14 @@ Episodes are written in SyncSim's episode layout.
    the execution log and final object poses and revises (up to `--attempts`). Every attempt is saved.
 2. **Expand** (`scripts/expand.py`): replays successful (and optionally near-miss) scripts with perturbations:
    `rerun`, `jitter`, `jitter_large`, `noisy_replay`, `grasp_offset`, `yaw_error`, `high_release`,
-   `early_open`, `sweep`. Each variant's label comes from the simulator, not from the perturbation type.
+   `early_open`, `sweep` (the free arm sweeps through the objects: a collision). Each variant's label comes
+   from the simulator, not from the perturbation type. RoboDojo latches success the first time its conditions
+   hold, so a rollout counts as a success only if they also hold at the end (`final_state_ok` in the
+   metadata); a sweep that wrecks a finished stack is a failure.
 3. **Select** (`scripts/select_balanced.py`): builds an exactly 50/50 success/failure set per task,
-   round-robin over perturbation kind and layout, as symlinks plus a `manifest.jsonl`.
+   round-robin over perturbation kind and layout, as symlinks plus a `manifest.jsonl`. Rollouts where the
+   arms never move and exact duplicates (the simulator is often deterministic, so a rerun can equal the
+   original) are left out.
 
 ## Episode layout
 
@@ -37,8 +42,10 @@ Physics runs at 250 Hz; frames are recorded every 12 steps (20.8 fps).
 
 ## Running
 
-Requires a RoboDojo checkout ported to Isaac Sim 6.2 with its CuRobo setup, the `anthropic` Python package,
-and `ANTHROPIC_API_KEY` in the environment. `scripts/rd_job.sh` runs collect then expand for one task on one
+Requires a RoboDojo checkout with its CuRobo setup, the `anthropic` Python package and `ANTHROPIC_API_KEY`
+in the environment. This code was run on Isaac Sim 6.2; `patches/robodojo_isaacsim62.patch` holds the changes
+RoboDojo (commit f57e163, including its IsaacLab submodule) needed for that: `patch -p1 < ...` in the
+checkout. Stock RoboDojo on Isaac Sim 5.1 should not need it. `scripts/rd_job.sh` runs collect then expand for one task on one
 GPU (see the variables at its top). Smoke tests: `scripts/rd_task_test.py`, `scripts/rd_grasp_test.py`.
 
 ```
@@ -49,3 +56,10 @@ python scripts/select_balanced.py --runs runs --task stack_blocks --per-class 30
 
 Tasks with success text in `syncdojo/executor.py`: `stack_blocks`, `stack_bowls`, `align_blocks`, `push_T`
 (`swap_blocks` is defined but its button articulation does not load in the 6.2 port).
+
+## Limits
+
+- One-shot scripts suit pick-and-place. `push_T` needs closed-loop pushing: Opus solved no layout, and reruns
+  of one script succeed or fail on contact noise alone, so it does not make a usable set.
+- Episodes have no camera calibration file, segmentation masks, contact annotations or calibration clip.
+- The same layout number does not guarantee an identical first frame (objects can settle ~1 cm apart).
