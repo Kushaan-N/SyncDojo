@@ -130,6 +130,20 @@ class Sim:
     def success(self):
         return bool(self.env.reward_manager.get_reward(final_check=True)[0] >= 1.0)
 
+    def final_state_ok(self):
+        """Do the task's success conditions hold in the CURRENT state? RoboDojo latches success the
+        first time the conditions hold, so anything that disturbs the scene afterwards (a collision
+        sweep, a stack toppling late) would still read as success; this re-evaluates them now."""
+        rm = self.env.reward_manager
+        saved = (rm.check_list, rm.query_list)
+        try:
+            rm.check_list = [[] for _ in range(rm.num_envs)]
+            rm.query_list = [[] for _ in range(rm.num_envs)]
+            self.env.run_reward()
+            return all(bool(rm.check_once(c, 0)) for group in rm.check_list[0] for c in group)
+        finally:
+            rm.check_list, rm.query_list = saved
+
     # ------------------------------------------------------------------ state
     def link6(self, side):
         r = self.arms[side]
