@@ -132,21 +132,21 @@ def edit_script(script, kind):
     return MotionScript.model_validate(s), info
 
 
-def sweep_steps(sim, side):
-    """Waypoints for `side`'s arm to sweep across the task objects at the top object's height. Scene
-    props (the camera stand) are left out, so the sweep aims at the objects themselves."""
+def sweep_steps(sim, side, flip=1.0, across=True):
+    """Waypoints for `side`'s arm to sweep through the task objects at the top object's height: across
+    the line from the arm's base to the objects (or along it), from either end (`flip`). Scene props
+    (the camera stand) are left out, so the sweep aims at the objects themselves."""
     objs = {k: v for k, v in sim.objects().items() if k not in SCENE_PROPS}
     xyz = np.array([v[:3] for v in objs.values()])
     c = xyz.mean(0)
     base = np.asarray(sim.arms[side].entity_origin_pose, dtype=float)[:3]
     d = c[:2] - base[:2]; d /= np.linalg.norm(d) + 1e-9
-    perp = np.array([-d[1], d[0]])
+    u = flip * (np.array([-d[1], d[0]]) if across else -d)  # along-sweeps start on the arm's side
     z = max(float(xyz[:, 2].max()) + rng.uniform(-0.01, 0.01), sim.surface_z + 0.015)
-    a0 = np.r_[c[:2] + 0.12 * perp, z + 0.10]
-    a1 = np.r_[c[:2] + 0.12 * perp, z]
-    a2 = np.r_[c[:2] - 0.12 * perp, z]
-    yaw = float(np.degrees(np.arctan2(perp[1], perp[0])))
-    return [a0, a1, a2], yaw
+    a0 = np.r_[c[:2] + 0.12 * u, z + 0.10]
+    a1 = np.r_[c[:2] + 0.12 * u, z]
+    a2 = np.r_[c[:2] - 0.12 * u, z]
+    return [a0, a1, a2]
 
 
 def sweep_sides(sim):
@@ -233,10 +233,13 @@ for i, kind, (bdir, meta) in order:
                 def fn(ms=ms):
                     log = run_script(sim, ms, settle_steps=20)[0]
                     before = {k: np.asarray(v[:3], float) for k, v in sim.objects().items()}
-                    for side in sweep_sides(sim):  # nearer arm first; the other one if it cannot get there
-                        pts, yaw = sweep_steps(sim, side)
+                    # nearer arm first; per arm try the start poses in turn until one is reachable
+                    tries = [(side, flip, across, yaw) for side in sweep_sides(sim) for across in (True, False)
+                             for flip in ((1.0, -1.0) if across else (1.0,)) for yaw in (0.0, 90.0)]
+                    for side, flip, across, yaw in tries:
+                        pts = sweep_steps(sim, side, flip, across)
                         ok, msg = sim.move_tcp(side, pts[0], yaw, 0.0, False)
-                        log.append(f"sweep {side} 0: {ok} {msg}")
+                        log.append(f"sweep {side} 0 ({'across' if across else 'along'}, flip {flip:+.0f}, yaw {yaw:.0f}): {ok} {msg}")
                         if not ok:
                             continue
                         sim.grip(side, 0.0)  # closed fingers: an open gripper can straddle a block and miss it
