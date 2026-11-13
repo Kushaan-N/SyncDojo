@@ -22,10 +22,13 @@ p.add_argument("--seed", type=int, default=0)
 a = p.parse_args()
 rng = random.Random(a.seed)
 
-pool, skipped = [], Counter()
+pool, skipped, calib = [], Counter(), {}
 for m in sorted(glob.glob(os.path.join(a.runs, a.task, "**", "metadata.json"), recursive=True)):
     d = json.load(open(m))
     ep = os.path.dirname(m)
+    if d.get("source") == "calibration":  # calibration clips are context, not episodes
+        calib[d.get("layout")] = ep
+        continue
     if not os.path.exists(os.path.join(ep, "agentview_rgb", "video.mp4")):
         continue
     kind = d.get("kind") or ("opus_success" if d.get("success") else "opus_failure")
@@ -88,16 +91,26 @@ os.makedirs(dst, exist_ok=True)
 for old in glob.glob(os.path.join(dst, "episode_*")):  # a rebuilt set may be smaller: no stale links
     if os.path.islink(old):
         os.unlink(old)
+# one calibration clip per layout (scripts/calibrate.py), linked next to the episodes
+cdir = os.path.join(dst, "calibration")
+os.makedirs(cdir, exist_ok=True)
+for old in glob.glob(os.path.join(cdir, "layout_*")):
+    if os.path.islink(old):
+        os.unlink(old)
+for L in sorted({r["layout"] for r in sel} & set(calib)):
+    os.symlink(os.path.abspath(calib[L]), os.path.join(cdir, f"layout_{L:03d}"))
 with open(os.path.join(dst, "manifest.jsonl"), "w") as f:
     for k, r in enumerate(sel):
         link = os.path.join(dst, f"episode_{k}")
         if os.path.islink(link):
             os.unlink(link)
         os.symlink(os.path.abspath(r["dir"]), link)
-        f.write(json.dumps({"episode": f"episode_{k}", **r}) + "\n")
+        cal = f"calibration/layout_{r['layout']:03d}" if r["layout"] in calib else None
+        f.write(json.dumps({"episode": f"episode_{k}", **r, "calibration": cal}) + "\n")
 kinds = defaultdict(lambda: [0, 0])
 for r in sel:
     kinds[r["kind"]][0 if r["success"] else 1] += 1
+print(f"{a.task}: calibration clips for {len({r['layout'] for r in sel} & set(calib))} of {len({r['layout'] for r in sel})} layouts")
 print(f"{a.task}: pool {len(pool)} ({sum(r['success'] for r in pool)} succ); selected {n} succ + {n} fail")
 for why, c in skipped.items():
     print(f"  left out: {c} ({why})")
