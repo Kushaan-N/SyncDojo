@@ -107,7 +107,7 @@ def describe_scene(task_text: str, objects: dict, robot: dict, table: dict, succ
 
 # ----------------------------------------------------------------------------- task programs
 class Program(BaseModel):
-    reasoning: str = Field(description="brief: the strategy, and what changed since the last version")
+    reasoning: str = Field(description="at most five sentences: the strategy, and what changed since the last version")
     code: str = Field(description="complete Python source defining run(api); no imports, no markdown fences")
 
 
@@ -124,9 +124,18 @@ Output the program in the required JSON format."""
 
 def _program_call(msgs, effort):
     from .skills import API_DOC
-    r = _client().messages.parse(model=MODEL, max_tokens=32000, system=SYSTEM_PROGRAM.format(api=API_DOC), messages=msgs,
-                                 output_config={"effort": effort}, output_format=Program)
-    _check(r)
+    last = None
+    for attempt in range(3):  # a reply cut off mid-JSON (output limit) fails to parse: ask again
+        try:
+            r = _client().messages.parse(model=MODEL, max_tokens=32000, system=SYSTEM_PROGRAM.format(api=API_DOC),
+                                         messages=msgs, output_config={"effort": effort}, output_format=Program)
+            _check(r)
+            break
+        except Exception as e:
+            last = e
+            print("OPUS_RETRY", attempt, repr(e)[:160], flush=True)
+    else:
+        raise last
     msgs.append({"role": "assistant", "content": r.content})
     return r
 
