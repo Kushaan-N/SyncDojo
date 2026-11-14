@@ -83,6 +83,7 @@ for L in a.layouts:
                 "attempt": k, "success": success, "failed_step": failed, "exec_log": log,
                 "script": script.model_dump(), "scene_prompt": scene if k == 0 else None,
                 "physics_steps": sim.n_step, "dt": rd_sim.DT, "model": op.MODEL,
+                "usage": (convo or {}).get("usage"),  # token counts of every Opus call for this layout so far
                 "wall_s": round(time.time() - t0, 1)}
         try:
             T = sim.recorder.save(ep, sim.stream, meta)
