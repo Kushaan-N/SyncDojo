@@ -103,3 +103,41 @@ def describe_scene(task_text: str, objects: dict, robot: dict, table: dict, succ
             f"Objects (position, orientation as quat_wxyz and yaw about z, world-frame bounding box):\n"
             + "\n".join(f"- {n}: {json.dumps(o)}" for n, o in objects.items())
             + "\n\nWrite the motion script.")
+
+
+# ----------------------------------------------------------------------------- task programs
+class Program(BaseModel):
+    reasoning: str = Field(description="brief: the strategy, and what changed since the last version")
+    code: str = Field(description="complete Python source defining run(api); no imports, no markdown fences")
+
+
+SYSTEM_PROGRAM = """You control a two-armed robot (two ARX-X5 arms with parallel-jaw grippers) in a physics
+simulator. You do not see images; you get the task, how success is checked, and an example scene as text.
+You write a Python program that solves the task on every layout of it, using the skill API below. The
+simulator runs your program on several layouts; if any fails you get the execution logs and final object
+poses back and write a corrected, complete program.
+
+{api}
+
+Output the program in the required JSON format."""
+
+
+def _program_call(msgs, effort):
+    from .skills import API_DOC
+    r = _client().messages.parse(model=MODEL, max_tokens=32000, system=SYSTEM_PROGRAM.format(api=API_DOC), messages=msgs,
+                                 output_config={"effort": effort}, output_format=Program)
+    _check(r)
+    msgs.append({"role": "assistant", "content": r.content})
+    return r
+
+
+def plan_program(scene_text: str, effort: str = "high") -> tuple[Program, dict]:
+    msgs = [{"role": "user", "content": scene_text}]
+    r = _program_call(msgs, effort)
+    return r.parsed_output, {"messages": msgs, "usage": [r.usage.model_dump()]}
+
+
+def revise_program(convo: dict, feedback: str, effort: str = "high") -> tuple[Program, dict]:
+    msgs = convo["messages"] + [{"role": "user", "content": feedback}]
+    r = _program_call(msgs, effort)
+    return r.parsed_output, {"messages": msgs, "usage": convo["usage"] + [r.usage.model_dump()]}
