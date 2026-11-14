@@ -29,7 +29,8 @@ app = rd_sim.launch(a)
 import numpy as np
 from syncdojo.executor import SUCCESS_TEXT, scene_facts
 from syncdojo.recorder import Recorder
-from syncdojo.skills import run_program
+import importlib
+from syncdojo import skills
 
 sim = rd_sim.Sim(a.task, app)
 os.makedirs(a.queue, exist_ok=True)
@@ -74,7 +75,8 @@ def handle(r):
                     s[:, off + j] += float(r["sigma"]) * n / (n.std() + 1e-9)
             sim.replay(s); log = [f"replayed {r['base']} with joint noise sigma {r['sigma']}"]
         else:
-            log, err = run_program(sim, r["code"], r.get("perturb"))
+            importlib.reload(skills)  # skill fixes take effect without restarting the simulator
+            log, err = skills.run_program(sim, r["code"], r.get("perturb"))
         latched = sim.success(); final_ok = sim.final_state_ok()
     except Exception as e:
         traceback.print_exc()
