@@ -159,28 +159,31 @@ for L in a.layouts:
     ep = os.path.join(a.out, a.task, "calibration", f"layout_{L:03d}")
     if os.path.exists(os.path.join(ep, "metadata.json")):
         continue
-    try:
-        rng = np.random.default_rng(a.seed * 1000 + L)
-        sim.reset(L)
-        sides, legs = probe(L, rng)
-        moved = film(L, legs, ep)
-        done = [l for l in legs if "skipped" not in l]
-        if not all(l["filmed_tracking_ok"] and l["return_error_m"] < 0.005 for l in done):
-            raise RuntimeError("filmed legs do not match the probe: " + str([(l["arm"], l["dof"]) for l in done if not l["filmed_tracking_ok"]]))
-        meta = {"task": a.task, "layout": L, "instruction": sim.instruction, "source": "calibration",
-                "arm_order": sides, "legs": legs,
-                "movement_order": [f"{l['arm']}:{l['dof']}{'+' if l['amount'] > 0 else '-'}" for l in done],
-                "skipped": [f"{l['arm']}:{l['dof']}" for l in legs if "skipped" in l],
-                "rejected_attempts": sum(1 for l in legs for t in l["attempts"] if not t["ok"]),
-                "trans_range_m": TRANS_M, "rot_range_deg": ROT_DEG, "trans_speed_mps": TRANS_SPEED, "rot_speed_dps": ROT_SPEED,
-                "pause_steps": PAUSE, "objects_moved_m": moved, "physics_steps": sim.n_step, "dt": DT}
-        T = sim.recorder.save(ep, sim.stream, meta)
-        sim.recorder = None
-        print("CALIB", json.dumps({"layout": L, "frames": T, "legs": len(done), "skipped": meta["skipped"],
-                                   "filmed_ok": sum(l["filmed_tracking_ok"] for l in done), "rejected": meta["rejected_attempts"],
-                                   "objects_moved_cm": round(moved * 100, 2)}), flush=True)
-    except Exception:
-        traceback.print_exc(); sim.recorder = None
-        print("CALIB_FAILED", L, flush=True)
+    for attempt in range(4):  # RoboDojo sometimes rejects a layout as unstable on reset; retry
+        try:
+            rng = np.random.default_rng(a.seed * 1000 + L)
+            sim.reset(L)
+            sides, legs = probe(L, rng)
+            moved = film(L, legs, ep)
+            done = [l for l in legs if "skipped" not in l]
+            if not all(l["filmed_tracking_ok"] and l["return_error_m"] < 0.005 for l in done):
+                raise RuntimeError("filmed legs do not match the probe: " + str([(l["arm"], l["dof"]) for l in done if not l["filmed_tracking_ok"]]))
+            meta = {"task": a.task, "layout": L, "instruction": sim.instruction, "source": "calibration",
+                    "arm_order": sides, "legs": legs,
+                    "movement_order": [f"{l['arm']}:{l['dof']}{'+' if l['amount'] > 0 else '-'}" for l in done],
+                    "skipped": [f"{l['arm']}:{l['dof']}" for l in legs if "skipped" in l],
+                    "rejected_attempts": sum(1 for l in legs for t in l["attempts"] if not t["ok"]),
+                    "trans_range_m": TRANS_M, "rot_range_deg": ROT_DEG, "trans_speed_mps": TRANS_SPEED, "rot_speed_dps": ROT_SPEED,
+                    "pause_steps": PAUSE, "objects_moved_m": moved, "physics_steps": sim.n_step, "dt": DT}
+            T = sim.recorder.save(ep, sim.stream, meta)
+            sim.recorder = None
+            print("CALIB", json.dumps({"layout": L, "frames": T, "legs": len(done), "skipped": meta["skipped"],
+                                       "filmed_ok": sum(l["filmed_tracking_ok"] for l in done), "rejected": meta["rejected_attempts"],
+                                       "objects_moved_cm": round(moved * 100, 2)}), flush=True)
+        except Exception:
+            traceback.print_exc(); sim.recorder = None
+            print("CALIB_FAILED", L, "attempt", attempt, flush=True)
+            continue
+        break
 print("CALIB_DONE", flush=True)
 sys.stdout.flush(); os._exit(0)
