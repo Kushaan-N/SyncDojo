@@ -117,6 +117,15 @@ class Sim:
         for _ in range(10):
             self.env.sim_step(render=False)
         self.env.run_reward()  # registers the task's success checks; consumed by reward_manager.step
+        # some tasks name their objects per layout (e.g. classify_objects' cat0_*): add those labels
+        for typ in ("Rigid", "Geometry", "Articulation"):
+            try:
+                for rec in self.lm.object_records_by_type[typ].layout_records_by_env[0]:
+                    lab = rec.get("label", None)
+                    if lab and lab not in self.labels:
+                        self.labels.append(lab)
+            except Exception:
+                pass
         self.home = {s: self.link6(s) for s in self.arms}
         self.home_q = {s: np.asarray(self.rm.get_joint(r)[0], dtype=float) for s, r in self.arms.items()}
         try:
