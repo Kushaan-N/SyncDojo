@@ -20,7 +20,7 @@ import numpy as np
 from .rd_sim import DT
 
 SCENE_PROPS = {"camera_stand"}
-MAX_STEPS = 30000          # 120 s of simulated time per program
+MAX_STEPS = 75000          # 300 s of simulated time per program
 HOVER = 0.10               # m above a grasp / release point
 SAFE_BUILTINS = {k: getattr(builtins, k) for k in (
     "range", "len", "min", "max", "sorted", "abs", "round", "enumerate", "zip", "list", "dict", "tuple", "set",
@@ -54,6 +54,10 @@ Skills (each returns True/False and never raises; a False is already written to 
   api.move(arm, xyz, yaw=0.0, tilt=0.0, straight=False)   raw TCP move (for pushing, tools, odd grasps)
   api.open(arm), api.close(arm), api.home(arm), api.wait(seconds)
   api.log(text)   write a line to the execution log (you get the log back if the run fails)
+
+Time: a program may use at most 300 s of simulated time (it is stopped after that); one pick + place takes
+about 15-20 s, a hand-over between the arms about 35 s. Prefer the arm that can reach both the object and its
+target, and avoid hand-overs and repeated adjustments unless needed.
 
 Rules: never move a TCP below api.table_z + 0.005. Keep the two arms apart: finish and home (api.home) one arm
 before the other works in the same area. Check the return values and stop or try the other arm on False.
