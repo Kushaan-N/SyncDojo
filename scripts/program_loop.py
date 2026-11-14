@@ -24,7 +24,7 @@ p.add_argument("--kinds", default="jitter,jitter_large,grasp_offset,yaw_error,hi
 p.add_argument("--program", default="")
 p.add_argument("--effort", default="high")
 p.add_argument("--seed", type=int, default=0)
-p.add_argument("--timeout-min", type=float, default=40, help="per batch of requests")
+p.add_argument("--timeout-min", type=float, default=12, help="per request; a batch waits this long times its size")
 a = p.parse_args()
 root = os.path.join(a.out, a.task)
 os.makedirs(os.path.join(root, "programs"), exist_ok=True)
@@ -42,7 +42,7 @@ def submit(req):
 
 def wait(ids):
     out, t0 = {}, time.time()
-    while len(out) < len(ids) and time.time() - t0 < a.timeout_min * 60:
+    while len(out) < len(ids) and time.time() - t0 < a.timeout_min * 60 * max(1, len(ids)):
         for i in ids:
             f = os.path.join(a.queue, f"res_{i}.json")
             if i not in out and os.path.exists(f):
