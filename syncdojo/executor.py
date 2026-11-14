@@ -24,6 +24,17 @@ SUCCESS_TEXT = {
                      "(within 8 deg). The cubes must be pushed - preferably with the set-square tool (label "
                      "'target', a triangular prism you may grasp and slide), or with the closed gripper - and never "
                      "lifted more than 7 mm. Afterwards both arms back near their start poses (within 15 cm and 20 deg)."),
+    "sort_nesting_dolls_by_size": ("the five nesting dolls (doll0..doll4) stand upright in ONE row along the world x axis, "
+                                   "ordered by size with the SMALLEST at the lowest x and the largest at the highest x (use "
+                                   "each doll's bounding box to tell its size): every doll's centre at least 3 cm further in "
+                                   "+x than the next smaller doll's, and all five centres within 3.5 cm of each other in y. "
+                                   "Dolls may be picked up and placed. Afterwards both arms back near their start poses "
+                                   "(within 15 cm and 20 deg)."),
+    "classify_objects": ("every object is in the basket of its category: objects whose label starts with cat0 inside "
+                         "basket0, cat1 inside basket1, cat2 inside basket2, each resting inside the basket (its centre "
+                         "no more than 1 cm above the basket's top rim, i.e. dropped in, not balanced on the edge), and no "
+                         "object in a wrong basket. Afterwards both arms back near their start poses (within 15 cm and "
+                         "20 deg)."),
     "push_T": ("the T-shaped block (t) is PUSHED with the closed gripper's fingertips or side - grasping, pinching or "
                "carrying the T is not allowed (never close the gripper around it) and it is never lifted more than 1 cm - until it matches the gray T-shaped "
                "pad (target_t): centres within 7 mm in x/y and orientation within 7 deg; afterwards both arms back "
