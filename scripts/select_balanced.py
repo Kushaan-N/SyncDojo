@@ -32,6 +32,11 @@ for m in sorted(glob.glob(os.path.join(a.runs, a.task, "**", "metadata.json"), r
     if not os.path.exists(os.path.join(ep, "agentview_rgb", "video.mp4")):
         continue
     kind = d.get("kind") or ("opus_success" if d.get("success") else "opus_failure")
+    # Grasp/release errors only fire inside pick/place; a program that never reaches them (e.g. pure
+    # pushing) leaves the run unperturbed, so name it for what it is.
+    if ("program" in d and kind in ("grasp_offset", "yaw_error", "early_open", "high_release")
+            and not any("(expansion)" in l for l in d.get("exec_log", []))):
+        kind = "rerun"
     if kind == "sweep" and "final_state_ok" not in d:
         skipped["sweep labelled before the final-state check existed"] += 1
         continue
