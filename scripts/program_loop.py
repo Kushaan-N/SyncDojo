@@ -130,8 +130,14 @@ def record(reqs):
 if a.layouts:
     base = {"op": "run", "code": code, "record": True, "program_name": version, "model": "claude-opus-5-5"}
     todo = [dict(base, layout=L, kind="program", out_dir=os.path.join(root, "prog", f"program_{L:03d}")) for L in a.layouts]
-    todo = [q for q in todo if not os.path.exists(os.path.join(q["out_dir"], "metadata.json"))]
     solved = {}
+    for q in todo:  # layouts recorded by an earlier pass: their variants are (re)made from that run
+        mf = os.path.join(q["out_dir"], "metadata.json")
+        if os.path.exists(mf):
+            m = json.load(open(mf))
+            if m.get("success"):
+                solved[q["layout"]] = (q["out_dir"], sum(1 for l in m.get("exec_log", []) if l.startswith("pick ") and l.endswith("OK")))
+    todo = [q for q in todo if not os.path.exists(os.path.join(q["out_dir"], "metadata.json"))]
     for q, r in record(todo):
         if r.get("success"):
             solved[q["layout"]] = (q["out_dir"], sum(1 for l in r.get("log", []) if l.startswith("pick ") and l.endswith("OK")))
