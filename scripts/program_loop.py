@@ -148,8 +148,9 @@ if a.layouts:
                 pert = {"jitter": {"jitter_m": 0.003}, "jitter_large": {"jitter_m": 0.012, "jitter_yaw_deg": 8.0},
                         "grasp_offset": {"grasp_offset": [d * math.cos(ang), d * math.sin(ang)], "at": at},
                         "yaw_error": {"yaw_error_deg": rng.choice([-1, 1]) * rng.uniform(25, 60), "at": at},
-                        "high_release": {"high_release_m": rng.uniform(0.03, 0.08), "at": at},
-                        "early_open": {"early_open": True, "at": at}, "sweep": {"sweep": True}}.get(kind)
+                        "high_release": {"high_release_m": rng.uniform(0.06, 0.12), "at": at},
+                        "early_open": {"early_open": True, "early_frac": rng.uniform(0.3, 0.7), "at": at},
+                        "sweep": {"sweep": True}}.get(kind)
                 if kind == "noisy_replay":
                     var.append({"op": "replay", "layout": L, "base": ndir, "sigma": [0.01, 0.03, 0.06][i % 3], "seed": seed,
                                 "record": True, "kind": kind, "out_dir": out, "source": "expansion"})
