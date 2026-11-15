@@ -127,8 +127,10 @@ def _program_call(msgs, effort):
     last = None
     for attempt in range(3):  # a reply cut off mid-JSON (output limit) fails to parse: ask again
         try:
-            r = _client().messages.parse(model=MODEL, max_tokens=32000, system=SYSTEM_PROGRAM.format(api=API_DOC),
-                                         messages=msgs, output_config={"effort": effort}, output_format=Program)
+            # streamed: a program plus Opus's reasoning about it can need more than the 32k a plain call allows
+            with _client().messages.stream(model=MODEL, max_tokens=64000, system=SYSTEM_PROGRAM.format(api=API_DOC),
+                                           messages=msgs, output_config={"effort": effort}, output_format=Program) as st:
+                r = st.get_final_message()
             _check(r)
             break
         except Exception as e:
