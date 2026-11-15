@@ -31,6 +31,9 @@ for m in sorted(glob.glob(os.path.join(a.runs, a.task, "**", "metadata.json"), r
         continue
     if not os.path.exists(os.path.join(ep, "agentview_rgb", "video.mp4")):
         continue
+    if any("simulator error" in str(l) for l in d.get("exec_log", [])):  # the sim crashed mid-run: not a task outcome
+        skipped["simulator error during the run"] += 1
+        continue
     kind = d.get("kind") or ("opus_success" if d.get("success") else "opus_failure")
     # Grasp/release errors only fire inside pick/place; a program that never reaches them (e.g. pure
     # pushing) leaves the run unperturbed, so name it for what it is.
