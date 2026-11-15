@@ -12,7 +12,7 @@ A request is QDIR/req_<id>.json; the worker claims it (rename), and writes QDIR/
   {"op": "replay", "layout": L, "base": DIR, "sigma": s, "seed": n, "out_dir": D}  noisy replay of DIR's stream
   {"op": "quit"}
 The label of a run is RoboDojo's success check AND the check still holding at the end."""
-import argparse, glob, json, os, sys, time, traceback
+import argparse, glob, json, os, signal, sys, time, traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from isaaclab.app import AppLauncher
@@ -21,6 +21,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--task", required=True)
 p.add_argument("--queue", required=True)
 p.add_argument("--idle-exit-min", type=float, default=0, help="exit after this long without a request (0: never)")
+p.add_argument("--request-timeout-min", type=float, default=25, help="give up on one request after this long")
 AppLauncher.add_app_launcher_args(p)
 a = p.parse_args()
 
@@ -33,6 +34,13 @@ import importlib
 from syncdojo import skills
 
 sim = rd_sim.Sim(a.task, app)
+
+
+def _timeout(signum, frame):
+    raise TimeoutError(f"request took longer than {a.request_timeout_min:.0f} min")
+
+
+signal.signal(signal.SIGALRM, _timeout)
 os.makedirs(a.queue, exist_ok=True)
 wid = f"{os.uname().nodename}-{os.getpid()}"
 print("WORKER_READY", a.task, wid, flush=True)
@@ -116,11 +124,13 @@ while True:
     r = json.load(open(job)); rid = os.path.basename(job).split("_")[-1][:-5]
     if r.get("op") == "quit":
         os.remove(job); break
+    signal.alarm(int(a.request_timeout_min * 60))  # a hung sim or planner call must not hold a worker forever
     try:
         res = handle(r)
     except Exception as e:
         traceback.print_exc(); res = {"ok": False, "error": f"worker error: {e!r}"[:300]}
         sim.recorder = None
+    signal.alarm(0)
     res["id"] = rid
     tmp = os.path.join(a.queue, f".tmp_{rid}")
     json.dump(res, open(tmp, "w"), default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
