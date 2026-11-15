@@ -149,13 +149,18 @@ class Api:
         g = np.array([o["xyz"][0] + dxy[0], o["xyz"][1] + dxy[1],
                       max(o["top_z"] - 0.03, o["bottom_z"] + 0.012, self.table_z + 0.012) + dz])
         yaw_err = 0.0
+        # A perturbed grasp is "blind": one attempt only, and the skill reports success whatever happened, the
+        # way an open-loop controller would not notice a bad grasp. The program then carries on with the error.
+        blind = False
         if self.p.get("grasp_offset") and self.p.get("at", 0) == k:
-            g[:2] += np.asarray(self.p["grasp_offset"], dtype=float)
+            g[:2] += np.asarray(self.p["grasp_offset"], dtype=float); blind = True
         if self.p.get("yaw_error_deg") and self.p.get("at", 0) == k:
-            yaw_err = float(self.p["yaw_error_deg"])
+            yaw_err = float(self.p["yaw_error_deg"]); blind = True
         yaws = [yaw] if yaw is not None else [o["yaw_deg"], o["yaw_deg"] + 90, 0.0, 90.0, 45.0, -45.0]
         yaws = [((y + 90) % 180) - 90 + yaw_err for y in yaws]
         arms = [arm] if arm else self._arm_order(o["xyz"])
+        if blind:
+            self.log(f"(expansion) perturbed grasp of {name}: offset {self.p.get('grasp_offset')}, yaw error {yaw_err:.0f}")
         for a in arms:
             if self.holding(a):
                 continue
@@ -169,6 +174,10 @@ class Api:
                 z0 = self.objects()[name]["xyz"][2]
                 self._move(a, g + [0, 0, HOVER], y, straight=True, what=f"lift {name}")
                 now = self.objects()[name]
+                if blind:  # report success whatever happened; place() then works with what is (not) in the hand
+                    self.held[a] = {"name": name, "yaw": y, "off": (np.asarray(self.sim.tcp(a)[:3]) - np.asarray(now["xyz"])).tolist()
+                                    if now["xyz"][2] - z0 >= 0.03 else [0.0, 0.0, 0.0], "obj_yaw": now["yaw_deg"]}
+                    self.log(f"pick {name} with {a} at yaw {y:.0f}: OK"); return True
                 if now["xyz"][2] - z0 < 0.03:
                     self.log(f"pick {name} with {a} at yaw {y:.0f}: closed but the object did not come up "
                              f"(gripper {self.sim.gripper(a):.2f} open)")
@@ -195,10 +204,14 @@ class Api:
         t = np.asarray(xyz, dtype=float) + off + [0, 0, float(release_dz)]
         if self.p.get("high_release_m") and self.p.get("at", 0) == k:
             t[2] += float(self.p["high_release_m"])
+        if self.p.get("early_open") and self.p.get("at", 0) == k:
+            # drop it part-way through the carry (not just above the target, where it would still land on it)
+            c = np.asarray(self.sim.tcp(arm)[:3]); m = c + (t + [0, 0, HOVER] - c) * float(self.p.get("early_frac", 0.5))
+            m[2] = max(m[2], t[2] + HOVER)
+            self._move(arm, m, y, what=f"carry {h['name']} (part-way)")
+            self.sim.grip(arm, 1.0); self.log(f"(expansion) {arm}: premature release of {h['name']} part-way")
         if not self._move(arm, t + [0, 0, HOVER], y, what=f"carry {h['name']}"):
             return False
-        if self.p.get("early_open") and self.p.get("at", 0) == k:
-            self.sim.grip(arm, 1.0); self.log(f"{arm}: premature release of {h['name']} (expansion)")
         if not self._move(arm, t, y, straight=True, what=f"lower {h['name']}"):
             return False
         self.sim.grip(arm, 1.0)
