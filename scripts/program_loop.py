@@ -96,6 +96,8 @@ else:
         version = f"v{rnd}.py"
         open(os.path.join(root, "programs", version), "w").write(prog.code)
         res = [(a.dev[0], call([{"op": "run", "layout": a.dev[0], "code": prog.code}])[0])]
+        if not res[0][1].get("ok"):  # no worker / unstable layout: revising would spend Opus calls on nothing
+            sys.exit(f"layout {a.dev[0]} could not be run ({res[0][1].get('error')}); program saved as {version}")
         if res[0][1].get("success") and len(a.dev) > 1:  # it works on the example: now the other layouts, in parallel
             res += list(zip(a.dev[1:], call([{"op": "run", "layout": L, "code": prog.code} for L in a.dev[1:]])))
         n_ok = sum(bool(r.get("success")) for _, r in res)
