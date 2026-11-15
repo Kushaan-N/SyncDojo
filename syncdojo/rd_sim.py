@@ -25,6 +25,9 @@ def launch(a):
     add_zero_delay_kit_args(a)
     # Isaac Sim 6.x defaults to RealTimePathTracing; RaytracedLighting (5.1's mode) denoises cleanly
     a.kit_args = ((getattr(a, "kit_args", None) or "") + " --/rtx/rendermode=RaytracedLighting").strip()
+    # UJITSO (Kit's asset build service) sometimes loops forever on "TRANSIENT_FAILURE ... Retrying build" and
+    # freezes the simulator mid-episode; every hung run so far had that loop. Build in-process instead.
+    a.kit_args += " --/UJITSO/enabled=false"
     return AppLauncher(a).app
 
 
