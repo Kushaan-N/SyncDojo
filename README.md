@@ -1,65 +1,75 @@
 # SyncDojo
 
-Builds world-model evaluation sets in RoboDojo (bimanual ARX-X5, Isaac Sim) without
-expert demonstrations. Claude Opus writes a motion script for each scene; the simulator runs it, RoboDojo's
-own success check labels the outcome, and the successful scripts are perturbed into near-miss failures.
-Episodes are written in SyncSim's episode layout.
+SyncDojo builds **evaluation sets for bimanual robot world models**: episodes of a two-armed robot
+(two ARX-X5 arms in the RoboDojo simulator, on Isaac Sim) doing a task, each labelled
+success or failure by the simulator, balanced exactly 50/50 per task. A world model is tested on whether
+its predictions match what really happened.
 
-## Pipeline
+No expert demonstrations are used. Claude Opus writes the robot's behaviour, and failures come from
+perturbing it. Episodes use the same layout as [SyncSim](https://github.com/Kushaan-N/SyncSim), the
+companion training-data generator, so the same loaders work.
 
-1. **Collect** (`scripts/collect.py`): for each layout, Opus gets a text description of the scene (objects with
-   pose and world bounding box, arm bases and tool positions, table height, the success condition) and returns
-   a structured motion script (`move` / `open` / `close` / `wait` per arm). The executor plans each move with
-   CuRobo, refuses moves through the table, then opens both grippers and homes both arms. On failure Opus gets
-   the execution log and final object poses and revises (up to `--attempts`). Every attempt is saved.
-2. **Expand** (`scripts/expand.py`): replays successful (and optionally near-miss) scripts with perturbations:
-   `rerun`, `jitter`, `jitter_large`, `noisy_replay`, `grasp_offset`, `yaw_error`, `high_release`,
-   `early_open`, `sweep` (the free arm sweeps through the objects: a collision). Each variant's label comes
-   from the simulator, not from the perturbation type. RoboDojo latches success the first time its conditions
-   hold, so a rollout counts as a success only if they also hold at the end (`final_state_ok` in the
-   metadata); a sweep that wrecks a finished stack is a failure.
-3. **Select** (`scripts/select_balanced.py`): builds an exactly 50/50 success/failure set per task,
-   round-robin over perturbation kind and layout, as symlinks plus a `manifest.jsonl`. Rollouts where the
-   arms never move and exact duplicates (the simulator is often deterministic, so a rerun can equal the
-   original) are left out.
+## How it works
 
-## Episode layout
+1. **Opus writes one program per task.** Given the task, its success condition and an example scene as
+   text, Opus writes `run(api)`: Python that reads the live object poses and calls skills (`pick`,
+   `place`, `move`, ...; `syncdojo/skills.py`). It is tested on a few layouts and revised from the
+   execution logs until it passes.
+2. **Simulator workers run it.** Persistent simulators (`scripts/worker.py`) serve a shared file queue, so
+   any number of workers on any number of GPUs run rollouts in parallel. The program is recorded on every
+   layout.
+3. **Perturbations make the failures.** Each solved layout is re-run with errors injected inside the
+   skills: target jitter, a blind offset or mis-rotated grasp, an early or high release, a collision
+   sweep by the free arm, and noisy replays of the recorded joint stream.
+4. **Labels come from the simulator.** A rollout is a success only if RoboDojo's success check holds at
+   the end of the episode, whatever perturbation was applied.
+5. **A balanced set is selected** (`scripts/select_balanced.py`): exactly 50/50 per task, spread over
+   perturbation kinds and layouts, with duplicates and no-motion clips left out.
+
+Steps 1-2 are `scripts/program_loop.py`. After the program is written (a few Opus calls, under $1 per
+task), more layouts and variants cost only GPU time.
+
+## What an eval set contains
 
 ```
-episode_k/
-  agentview_rgb/video.mp4      head camera
-  wrist_left_rgb/video.mp4
-  wrist_right_rgb/video.mp4
-  pose.pkl                     TCP poses (xyzw), gripper measured/commanded
-  actions.npy                  [T, 16] per-frame commands
-  joints.npy                   [T, 16]
-  object_poses.npz             per-object pose over time (wxyz)
-  stream.npz                   full-rate joint/gripper control stream (replayable)
-  metadata.json                task, layout, instruction, success, script, source, exec log
+<task>/
+  manifest.jsonl               episode, success, kind (perturbation), layout, calibration clip
+  cameras.json                 intrinsics, head-camera pose, wrist-camera mounts
+  calibration/layout_<L>/      per layout: each arm moves each of its 6 DoFs out and back
+  episode_<k>/
+    agentview_rgb/video.mp4    head camera     (all videos 20.8 fps)
+    wrist_left_rgb/video.mp4
+    wrist_right_rgb/video.mp4
+    pose.pkl                   both arms' TCP poses (xyzw) and gripper opening
+    actions.npy                [T, 16] per arm: TCP xyz, quat xyzw, gripper
+    joints.npy                 [T, 16] per arm: 6 arm joints, 2 gripper joints
+    object_poses.npz           every task object's pose per frame (wxyz)
+    stream.npz                 joint targets at every 250 Hz physics step (exact replay)
+    metadata.json              task, layout, program, perturbation, execution log, outcome
 ```
-
-Physics runs at 250 Hz; frames are recorded every 12 steps (20.8 fps).
 
 ## Running
 
-Requires a RoboDojo checkout with its CuRobo setup, the `anthropic` Python package and `ANTHROPIC_API_KEY`
-in the environment. This code was run on Isaac Sim 6.2; `patches/robodojo_isaacsim62.patch` holds the changes
-RoboDojo (commit f57e163, including its IsaacLab submodule) needed for that: `patch -p1 < ...` in the
-checkout. Stock RoboDojo on Isaac Sim 5.1 should not need it. `scripts/rd_job.sh` runs collect then expand for one task on one
-GPU (see the variables at its top). Smoke tests: `scripts/rd_task_test.py`, `scripts/rd_grasp_test.py`.
+Needs a RoboDojo checkout with its CuRobo setup, the `anthropic` package and `ANTHROPIC_API_KEY`. On Isaac
+Sim 6.2, apply `patches/robodojo_isaacsim62.patch` in the checkout (RoboDojo commit f57e163).
 
 ```
-python scripts/collect.py --task stack_blocks --layouts 0 1 2 3 --stop-after 3 --out runs --headless --enable_cameras
-python scripts/expand.py  --task stack_blocks --out runs --per-kind 3 --headless --enable_cameras
-python scripts/select_balanced.py --runs runs --task stack_blocks --per-class 30 --out eval
+# 1. start workers (inside a GPU allocation; several per GPU is fine)
+python scripts/worker.py --task stack_blocks --queue Q --headless --enable_cameras
+
+# 2. develop the program on layouts 0-2, then record layouts 0-11 and their perturbed variants
+python scripts/program_loop.py --task stack_blocks --queue Q --out runs --dev 0 1 2 --layouts $(seq 0 11)
+
+# 3. calibration clips and camera parameters
+python scripts/calibrate.py    --task stack_blocks --layouts $(seq 0 11) --out runs --headless --enable_cameras
+python scripts/dump_cameras.py --task stack_blocks --out eval --headless --enable_cameras
+
+# 4. the 50/50 set
+python scripts/select_balanced.py --runs runs --task stack_blocks --per-class 50 --out eval
 ```
 
-Tasks with success text in `syncdojo/executor.py`: `stack_blocks`, `stack_bowls`, `align_blocks`, `push_T`
-(`swap_blocks` is defined but its button articulation does not load in the 6.2 port).
+`program_loop.py` needs no GPU; it talks to the workers only through the queue directory. Tasks with a
+success description in `syncdojo/executor.py`: `stack_blocks`, `stack_bowls`, `align_blocks`, `push_T`.
 
-## Limits
-
-- One-shot scripts suit pick-and-place. `push_T` needs closed-loop pushing: Opus solved no layout, and reruns
-  of one script succeed or fail on contact noise alone, so it does not make a usable set.
-- Episodes have no camera calibration file, segmentation masks, contact annotations or calibration clip.
-- The same layout number does not guarantee an identical first frame (objects can settle ~1 cm apart).
+An earlier mode, one Opus motion script per scene (`scripts/collect.py`, then `scripts/expand.py` for the
+perturbations), is kept for reference.
