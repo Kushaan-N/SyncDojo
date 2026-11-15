@@ -102,7 +102,7 @@ else:
         print("ROUND", json.dumps({"round": rnd, "version": version, "passed": [L for L, r in res if r.get("success")],
                                    "failed": [L for L, r in res if not r.get("success")], "opus_s": round(time.time() - t0),
                                    "output_tokens": convo["usage"][-1].get("output_tokens")}), flush=True)
-        if n_ok > best[0]:
+        if n_ok >= best[0]:  # ties: the later version (it has seen more feedback)
             best = (n_ok, version, prog.code)
         if n_ok == len(a.dev):
             break
